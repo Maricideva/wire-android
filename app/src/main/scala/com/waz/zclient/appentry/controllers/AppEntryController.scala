@@ -87,8 +87,8 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
   }
 
   val entryStage = for {
-    account <- currentAccount
-    user <- currentUser
+    account <- currentAccount.orElse(Signal.const(None))
+    user <- currentUser.orElse(Signal.const(None))
     firstPageState <- firstStage
     state <- Signal.const(stateForAccountAndUser(account, user, firstPageState)).collect{ case s if s != Waiting => s }
   } yield state
@@ -126,12 +126,12 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
         SetUsersNameTeam
       case (Some(accountData), None) if accountData.pendingTeamName.isDefined =>
         SetPasswordTeam
-      case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.PASSWORD_MISSING && accountData.email.orElse(accountData.pendingEmail).isDefined =>
+      case (Some(accountData), _) if accountData.pendingPhone.isDefined && (!accountData.verified || !accountData.canLogin || (accountData.pendingPhone == accountData.phone)) =>
+        VerifyPhoneStage
+      case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.PASSWORD_MISSING || (accountData.verified && !accountData.canLogin) =>
         InsertPasswordStage
       case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.LIMIT_REACHED =>
         DeviceLimitStage
-      case (Some(accountData), _) if accountData.pendingPhone.isDefined && !accountData.verified =>
-        VerifyPhoneStage
       case (Some(accountData), _) if accountData.pendingEmail.isDefined && accountData.password.isDefined && !accountData.verified =>
         VerifyEmailStage
       case (Some(accountData), _) if accountData.regWaiting =>
@@ -146,9 +146,9 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
         AddPictureStage
       case (Some(accountData), Some(userData)) if userData.handle.isEmpty && !(accountData.pendingTeamName.isDefined || accountData.teamId.fold(_ => false, _.isDefined)) =>
         AddHandleStage
-      case (Some(accountData), Some(userData)) if accountData.firstLogin && accountData.clientRegState == ClientRegistrationState.REGISTERED =>
+      case (Some(accountData), Some(userData)) if accountData.firstLogin && accountData.clientRegState == ClientRegistrationState.REGISTERED && accountData.canLogin =>
         FirstEnterAppStage
-      case (Some(accountData), Some(userData)) if accountData.clientRegState == ClientRegistrationState.REGISTERED =>
+      case (Some(accountData), Some(userData)) if accountData.canLogin =>
         EnterAppStage
       case _ =>
         NoAccountState(firstPageState)
